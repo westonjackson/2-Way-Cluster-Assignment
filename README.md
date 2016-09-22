@@ -26,4 +26,4 @@ For a given point xi:
 
 2. Assign probability ui = Uniform(0,1) to xi, which creates the following normal distribution for xi:
 
-N(xi; ui muj + (1 - ui)muj', ui Sigmaj + (1 - ui)Sigmaj'
+N(xi; ui muj + (1 - ui)muj', ui Sigmaj + (1 - ui)Sigmaj')
