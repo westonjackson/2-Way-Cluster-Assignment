@@ -42,7 +42,7 @@ if __name__ == '__main__':
     muj1 = np.array([[0,0]])
     muj2 = np.array([[1,1]])
     sigma1 = np.array([[1,0],[0,1.2]])
-    sigma2 = np.array([[2,0],[0,3]])
+    sigma2 = np.array([[1.3,0],[0,1.0]])
     x = np.array([[0.5,0.5]])
 
     n = 10000
