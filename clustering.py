@@ -105,10 +105,10 @@ def get_expectation(point, u_i, mu, sigma, pi, dic):
         cov = u_ijj*sigma_1 + (1 - u_ijj)*sigma_2
         p = multivariate_normal.pdf(point, mean=mean, cov=cov)
         probabilities[0][i] = p
-        if u_ijj == 0:
-            probabilities[0][i] = epsilon
-        if u_ijj == 1 and cluster1 != cluster2:
-            probabilities[0][i] = epsilon
+        #if u_ijj == 0:
+            #probabilities[0][i] = epsilon
+        #if u_ijj == 1 and cluster1 != cluster2:
+            #probabilities[0][i] = epsilon
     return probabilities
 
 #Getting expectation for w_ijj (need to vectorize)
