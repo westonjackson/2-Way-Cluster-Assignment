@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.mlab as mlab
 import math
 from scipy.stats import multivariate_normal
+from matplotlib.patches import Ellipse
 
 epsilon = .00000000001
 
@@ -53,6 +54,13 @@ def get_index(xy, n):
     y = xy[1]
     return int(0.5*(x - 1)*(2*n - x + 2) + y - x)
 
+####################
+#
+# 2-Way Expectation Maximization code
+#
+#####################
+
+#gradient descent for u in [0,1]
 def gradient_ascent(muj1, muj2, sigma1, sigma2, x):
     u = .5
     d = 1.0
@@ -69,6 +77,7 @@ def gradient_ascent(muj1, muj2, sigma1, sigma2, x):
         u = 0
     return u
 
+#get gradient for u
 def uniform_gradient(muj1, muj2, sigma1, sigma2, x, u):
     deltamu = muj1 - muj2
     deltasig = sigma1 - sigma2
@@ -81,125 +90,124 @@ def uniform_gradient(muj1, muj2, sigma1, sigma2, x, u):
     t3 = 2*np.dot(np.dot(x_minus_mu,np.linalg.inv(sigma)), deltamu.T)
     return t1 + t2 + t3
 
-
+#Getting expectation w_ijj (need to vectorize)
 def get_expectation(point, u_i, mu, sigma, pi, dic):
     probabilities = np.zeros((1,len(u_i)),dtype=np.float64)
     for i in range(len(u_i)):
-        clusters = dic[i]
-        mu_1 = mu[clusters[0]]
-        mu_2 = mu[clusters[1]]
-        sigma_1 = sigma[clusters[0]]
-        sigma_2 = sigma[clusters[1]]
+        cluster1 = i/len(mu)
+        cluster2 = i%len(mu)
+        mu_1 = mu[cluster1]
+        mu_2 = mu[cluster2]
+        sigma_1 = sigma[cluster1]
+        sigma_2 = sigma[cluster2]
         u_ijj = u_i[i]
         mean = u_ijj*np.array(mu_1) + (1 - u_ijj)*np.array(mu_2)
         cov = u_ijj*sigma_1 + (1 - u_ijj)*sigma_2
         p = multivariate_normal.pdf(point, mean=mean, cov=cov)
         probabilities[0][i] = p
-    print probabilities
-    print point
+        if u_ijj == 0:
+            probabilities[0][i] = epsilon
+        if u_ijj == 1 and cluster1 != cluster2:
+            probabilities[0][i] = epsilon
     return probabilities
 
-
+#Getting expectation for w_ijj (need to vectorize)
 def expectation(points, w, u, mu, sigma, pi, dic):
     for i in range(len(w)):
         probabilities = get_expectation(points[i], u[i], mu, sigma, pi, dic)
         w[i] = probabilities/(np.sum(probabilities) + epsilon)
     return w
 
+#maximize pi
 def maximize_pi(w):
     pi = np.sum(w, axis=0)/len(w)
     return pi
 
+#maximize u (need to vectorize)
 def maximize_u(points, u, mu, sigma, dic):
     for i in range(len(u)):
         for j in range(len(u[0])):
-            clusters = dic[j]
+            cluster_1 = j/3
+            cluster_2 = j%3
             x = points[i]
-            muj1 = mu[clusters[0]]
-            muj2 = mu[clusters[1]]
-            sigmaj1 = sigma[clusters[0]]
-            sigmaj2 = sigma[clusters[1]]
-            if clusters[0] != clusters[1]:
+            muj1 = np.array(mu[cluster_1])
+            muj2 = np.array(mu[cluster_2])
+            sigmaj1 = sigma[cluster_1]
+            sigmaj2 = sigma[cluster_2]
+            if cluster_1 != cluster_2:
                 u[i][j] = gradient_ascent(muj1, muj2, sigmaj1, sigmaj2, x)
     return u
 
+#maximize mu (need to vectorize)
 def maximize_mu(points, w, u, mu, dic):
-    temp = mu
+    w_j = np.zeros((len(w), int(np.sqrt(len(w[0])))))
     for i in range(len(mu)):
-        top = np.zeros((1,2))
-        bottom = 0
+        w_j.T[i] = w.T[i*len(mu) + i]
+    mu = np.zeros(np.shape(mu))
+    sum_w_j = np.sum(w_j, axis=0)
+    for i in range(len(mu)):
         for j in range(len(points)):
-            for k in range(len(mu)):
-                t1 = min(i,k)
-                t2 = max(i,k)
-                index = get_index((t1 + 1,t2 + 1), len(mu))
-                x = points[j]
-                w_ijj = w[j][index]
-                u_ijj = u[j][index]
-                if k < i:
-                    u_ijj = 1 - u_ijj
-
-                muj2 = mu[k]
-                muj1 = mu[i]
-                top += w_ijj*u_ijj*(x - muj2*(1 - u_ijj))
-                bottom += w_ijj*u_ijj*u_ijj
-        temp[i] = np.array(top/(bottom + epsilon))[0]
-    mu = temp
+            mu[i] = mu[i] + points[j]*w_j[j][i]
+        mu[i] = mu[i] * np.reciprocal(sum_w_j[i])
     return mu
 
+#maximize sigma (need to vectorize)
 def maximize_sigma(points, w, u, mu, sigma, dic):
-    temp = sigma
-    for i in range(len(sigma)):
-        top = np.zeros((2,2))
-        bottom = 0
-        for j in range(len(points)):
-            for k in range(len(sigma)):
-                t1 = min(i,k)
-                t2 = max(i,k)
-                index = get_index((t1 + 1,t2 + 1), len(mu))
+    w_j = np.zeros((len(w), int(np.sqrt(len(w[0])))))
 
-                x = points[j]
-                w_ijj = w[j][index]
-                u_ijj = u[j][index]
-                if k < i:
-                    u_ijj = 1 - u_ijj
-                muj2 = mu[k]
-                muj1 = mu[i]
-                sigmaj1 = sigma[k]
-                sigmaj2 = sigma[i]
-                mean = [u_ijj*muj1 + (1 - u_ijj)*muj2]
-                top += w_ijj*((x - mean).T*(x - mean) + u_ijj*(1 - u_ijj)*sigmaj2)
-                bottom += w_ijj*u_ijj*u_ijj
-        temp[i] = top/bottom
-    sigma = temp
+    for i in range(len(mu)):
+        w_j.T[i] = w.T[i*len(mu) + i]
+
+    sum_w_j = np.sum(w_j, axis=0)
+
+    for i in range(len(sigma)):
+        x_minus_mu = points - mu[i]
+        sigma[i] = np.zeros(np.shape(sigma[i]))
+        for j in range(len(x_minus_mu)):
+            x_minus_mu[j] = x_minus_mu[j] * w_j[j][i]
+            temp = np.array([x_minus_mu[j]]).T * np.array([x_minus_mu[j]])
+            sigma[i] = sigma[i] + temp
+        sigma[i] = sigma[i] * np.reciprocal(sum_w_j[i])
+
     return sigma
 
 if __name__ == '__main__':
     mu = [np.array([0,1]), np.array([50,50]),np.array([100,0])]
     sigma = [np.array([[1,0],[0,1]]),np.array([[1,0],[0,1]]),np.array([[1,0],[0,1]])]
-    pi = [.3,0,0,.3,0,.4]
+    pi = [.3,.05,.05,.25,.05,.3]
     dic = get_map(len(mu))
 
-    NUM_POINTS = 100
+    NUM_POINTS = 1000
     points = create_points(NUM_POINTS, mu, sigma, pi, dic).T
 
-    mu = [np.array([0,1]), np.array([50,50]),np.array([100,0])]
-    sigma = [np.array([[1,0],[0,1]]),np.array([[1,0],[0,1]]),np.array([[1,0],[0,1]])]
-    pi = [1,0,0,1,0,1]
+    mu = [[50,19], [50,20], [51,19]]
+    sigma = [np.array([[10,0],[0,10]]),np.array([[10,0],[0,10]]),np.array([[10,0],[0,10]])]
+    pi = [1,0,0,0,1,0,0,0,1]
     k = 3
 
     w = np.zeros((len(points),len(pi)))
     u = np.ones((len(points),len(pi)))
-    for i in range(100):
+    for i in range(20):
         w = expectation(points, w, u, mu, sigma, pi, dic)
         pi = maximize_pi(w)
-        print pi
-        print mu
         u = maximize_u(points, u, mu, sigma, dic)
         mu = maximize_mu(points, w, u, mu, dic)
         sigma = maximize_sigma(points, w, u, mu, sigma, dic)
+        print pi
+        print mu
+        print sigma
 
     mu = np.array(mu)
+    ax = plt.subplot(111,aspect='auto')
+    for i in range(k):
+        mean = mu[i]
+        cov = sigma[i]
+        lambda_, v = np.linalg.eig(cov)
+        ell = Ellipse(xy=(mean[0],mean[1]),width=lambda_[0], height=lambda_[1], angle=np.rad2deg(np.arccos(v[0,0])))
+        ell.set_facecolor('none')
+        ax.add_artist(ell)
+    ax.set_xlim(-5, 100)
+    ax.set_ylim(-5, 100)
     plt.scatter(points.T[0], points.T[1])
     plt.scatter(mu.T[0], mu.T[1], color='red')
     plt.show()
