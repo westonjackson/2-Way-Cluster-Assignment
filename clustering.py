@@ -7,51 +7,37 @@ from matplotlib.patches import Ellipse
 
 
 #FOR CREATING DATA POINTS
-def create_points(n, mu, sigma, pi, dic):
+def create_points(n, mu, sigma, pi):
     points = np.empty([2, 0])
+    u = np.empty([1,0])
+    prior_mu = np.empty([2,0])
     for i in range(n):
-        point = get_point(mu, sigma, pi, dic)
-        points = np.append(points, point, axis=1)
-    return points
+        point = get_point(mu, sigma, pi)
+        points = np.append(points, point[0], axis=1)
+        u = np.append(u, point[1], axis=1)
+        prior_mu = np.append(prior_mu, point[2], axis=1)
+    return (points, u, prior_mu)
 
 #FOR CREATING DATA POINTS
-def get_point(mu, sigma, pi, dic):
-    index = np.random.choice(np.arange(0, len(pi)), p=pi)
-    clusters = dic[index]
-    if clusters[0] == clusters[1]:
-        mean = mu[clusters[0]]
-        cov = sigma[clusters[0]]
-        return np.random.multivariate_normal(mean, cov, 1).T
+def get_point(mu, sigma, pi):
+    i = np.random.choice(np.arange(0, len(pi)), p=pi)
+    cluster_1 = i/len(mu)
+    cluster_2 = i%len(mu)
+    if cluster_1 == cluster_2:
+        mean = mu[cluster_1]
+        cov = sigma[cluster_1]
+        return (np.random.multivariate_normal(mean, cov, 1).T,[[1]],[[cluster_1],[cluster_2]])
 
-    mu_1 = mu[clusters[0]]
-    mu_2 = mu[clusters[1]]
-    sigma_1 = sigma[clusters[0]]
-    sigma_2 = sigma[clusters[1]]
+    mu_1 = mu[cluster_1]
+    mu_2 = mu[cluster_2]
+    sigma_1 = sigma[cluster_1]
+    sigma_2 = sigma[cluster_2]
     u = np.random.uniform()
 
     mean = u*np.array(mu_1) + (1 - u)*np.array(mu_2)
     cov = u*sigma_1 + (1 - u)*sigma_2
 
-    return np.random.multivariate_normal(mean, cov, 1).T
-
-#Used to map indices to tuples, 0 -> (1,1)
-def get_map(n):
-    dic = {}
-    j = 0
-    k = 0
-    for i in range(n):
-        j = i
-        while i <= j and j < n:
-            dic[k] = [i,j]
-            j+=1
-            k+=1
-    return dic
-
-#helper function to go from (1,1) -> 0
-def get_index(xy, n):
-    x = xy[0]
-    y = xy[1]
-    return int(0.5*(x - 1)*(2*n - x + 2) + y - x)
+    return (np.random.multivariate_normal(mean, cov, 1).T,[[u]], [[cluster_1],[cluster_2]])
 
 ####################
 #
@@ -68,12 +54,12 @@ def gradient_ascent(muj1, muj2, sigma1, sigma2, x):
         d = uniform_gradient(muj1, muj2, sigma1, sigma2, x, u)
         u = u + step*d
         step = step/np.sqrt(i + 1)
-        if u < .1 or u > .9:
+        if u < 0 or u > 1:
             break
 
-    if u > .9:
+    if u > 1:
         u = 1
-    if u < .1:
+    if u < 0:
         u = 0
     return u
 
@@ -104,7 +90,7 @@ def get_expectation(point, u_i, mu, sigma, pi):
         mean = u_ijj*np.array(mu_1) + (1 - u_ijj)*np.array(mu_2)
         cov = u_ijj*sigma_1 + (1 - u_ijj)*sigma_2
         p = multivariate_normal.pdf(point, mean=mean, cov=cov, allow_singular=True)
-        probabilities[0][i] = p
+        probabilities[0][i] = pi[i]*p
         if u_ijj == 0:
             probabilities[0][i] = 0
         if u_ijj == 1 and cluster1 != cluster2:
@@ -167,20 +153,22 @@ def maximize_sigma(points, w, u, mu, sigma):
 if __name__ == '__main__':
     mu = [np.array([0,1]), np.array([5,5]),np.array([10,0])]
     sigma = [np.array([[.5,0],[0,.5]]),np.array([[.5,0],[0,.5]]),np.array([[.5,0],[0,.5]])]
-    pi = [.3,.05,.05,.25,.05,.3]
-    dic = get_map(len(mu))
+    pi = [.3,.025,.025,.025,.25,.025,.025,.025,.3]
 
     NUM_POINTS = 100
-    points = create_points(NUM_POINTS, mu, sigma, pi, dic).T
+    result = create_points(NUM_POINTS, mu, sigma, pi)
+    points = result[0].T
+    prior_u = result[1].T
+    prior_mu = result[2].T
 
     mu = [[0,0], [0,1], [1,0]]
     sigma = [np.array([[1,0],[0,1]]),np.array([[1,0],[0,1]]),np.array([[1,0],[0,1]])]
-    pi = [1,0,0,0,1,0,0,0,1]
+    pi = [.2,.1,.05,.1,.2,.05,.05,.05,.2]
     k = 3
 
     w = np.zeros((len(points),len(pi)))
     u = np.ones((len(points),len(pi)))
-    for i in range(10):
+    for i in range(20):
         u = maximize_u(points, u, mu, sigma)
         w = expectation(points, w, u, mu, sigma, pi)
         pi = maximize_pi(w)
@@ -190,6 +178,16 @@ if __name__ == '__main__':
     print mu
     print sigma
     print pi
+    posterior_mu = np.argmax(w, axis=1)
+    correct = 0
+    for i in range(len(points)):
+        if prior_mu[i][0] == posterior_mu[i] / len(mu) and prior_mu[i][1] == posterior_mu[i] % len(mu):
+            correct = correct + 1
+        elif prior_mu[i][0] == posterior_mu[i] % len(mu) and prior_mu[i][1] == posterior_mu[i] / len(mu):
+            correct = correct + 1
+    print "cluster error rate"
+    print 1 - correct/float(len(points))
+
     mu = np.array(mu)
     ax = plt.subplot(111,aspect='auto')
     for i in range(k):
