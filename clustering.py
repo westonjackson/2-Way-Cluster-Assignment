@@ -1,43 +1,11 @@
+import sqlite3
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.mlab as mlab
 import math
 from scipy.stats import multivariate_normal
 from matplotlib.patches import Ellipse
-
-
-#FOR CREATING DATA POINTS
-def create_points(n, mu, sigma, pi):
-    points = np.empty([2, 0])
-    u = np.empty([1,0])
-    prior_mu = np.empty([2,0])
-    for i in range(n):
-        point = get_point(mu, sigma, pi)
-        points = np.append(points, point[0], axis=1)
-        u = np.append(u, point[1], axis=1)
-        prior_mu = np.append(prior_mu, point[2], axis=1)
-    return (points, u, prior_mu)
-
-#FOR CREATING DATA POINTS
-def get_point(mu, sigma, pi):
-    i = np.random.choice(np.arange(0, len(pi)), p=pi)
-    cluster_1 = i/len(mu)
-    cluster_2 = i%len(mu)
-    if cluster_1 == cluster_2:
-        mean = mu[cluster_1]
-        cov = sigma[cluster_1]
-        return (np.random.multivariate_normal(mean, cov, 1).T,[[1]],[[cluster_1],[cluster_2]])
-
-    mu_1 = mu[cluster_1]
-    mu_2 = mu[cluster_2]
-    sigma_1 = sigma[cluster_1]
-    sigma_2 = sigma[cluster_2]
-    u = np.random.uniform()
-
-    mean = u*np.array(mu_1) + (1 - u)*np.array(mu_2)
-    cov = u*sigma_1 + (1 - u)*sigma_2
-
-    return (np.random.multivariate_normal(mean, cov, 1).T,[[u]], [[cluster_1],[cluster_2]])
+import pandas as pd
 
 ####################
 #
@@ -56,7 +24,6 @@ def gradient_ascent(muj1, muj2, sigma1, sigma2, x):
         step = step/np.sqrt(i + 1)
         if u < 0 or u > 1:
             break
-
     if u > 1:
         u = 1
     if u < 0:
@@ -150,59 +117,36 @@ def maximize_sigma(points, w, u, mu, sigma):
         sigma[i] = result * np.reciprocal(sum_w_j[i])
     return sigma
 
+
 if __name__ == '__main__':
-    mu = [np.array([0,1]), np.array([5,5]),np.array([10,0])]
-    sigma = [np.array([[.5,0],[0,.5]]),np.array([[.5,0],[0,.5]]),np.array([[.5,0],[0,.5]])]
-    pi = [.3,.025,.025,.025,.25,.025,.025,.025,.3]
+    num = 100
+    data = pd.read_table("Complete.OTU.by.sample.table.txt", header=0, nrows=100, delimiter="\t")
+    print np.shape(data)
+    print data.columns.values
 
-    NUM_POINTS = 100
-    result = create_points(NUM_POINTS, mu, sigma, pi)
-    points = result[0].T
-    prior_u = result[1].T
-    prior_mu = result[2].T
+    labels = data["Group"]
+    raw_data = data.drop("Group", axis=1)
+    dimensions = list(raw_data.columns.values)
+    points = raw_data[dimensions][1:num]
+    d = len(dimensions)
 
-    mu = [[0,0], [0,1], [1,0]]
-    sigma = [np.array([[1,0],[0,1]]),np.array([[1,0],[0,1]]),np.array([[1,0],[0,1]])]
-    pi = [.2,.1,.05,.1,.2,.05,.05,.05,.2]
+    #initialize variables
     k = 3
-
+    idx = np.random.randint(num, size=k)
+    mu = points[idx,:]
+    sigma = np.empty((k,d,d))
+    for i in range(len(sigma)):
+        sigma[i] = np.identity(d)
+    pi = np.ones((1,k*k))/(k*k)
     w = np.zeros((len(points),len(pi)))
     u = np.ones((len(points),len(pi)))
-    for i in range(20):
-        u = maximize_u(points, u, mu, sigma)
-        w = expectation(points, w, u, mu, sigma, pi)
-        pi = maximize_pi(w)
-        mu = maximize_mu(points, w, u, mu)
-        sigma = maximize_sigma(points, w, u, mu, sigma)
 
-    print mu
-    print sigma
-    print pi
-    posterior_mu = np.argmax(w, axis=1)
-    correct = 0
-    for i in range(len(points)):
-        if prior_mu[i][0] == posterior_mu[i] / len(mu) and prior_mu[i][1] == posterior_mu[i] % len(mu):
-            correct = correct + 1
-        elif prior_mu[i][0] == posterior_mu[i] % len(mu) and prior_mu[i][1] == posterior_mu[i] / len(mu):
-            correct = correct + 1
-    print "cluster error rate"
-    print 1 - correct/float(len(points))
-
-    mu = np.array(mu)
-    ax = plt.subplot(111,aspect='auto')
-    for i in range(k):
-        mean = mu[i]
-        cov = sigma[i]
-        lambda_, v = np.linalg.eig(cov)
-        ell = Ellipse(xy=(mean[0],mean[1]),width=np.sqrt(lambda_[0]), height=np.sqrt(lambda_[1]), angle=np.rad2deg(np.arccos(v[0,0])))
-        ell.set_facecolor('none')
-        ax.add_artist(ell)
-    ax.set_xlim(-1, 11)
-    ax.set_ylim(-1, 11)
+    #for i in range(100):
+    #    u = maximize_u(points, u, mu, sigma)
+    #    w = expectation(points, w, u, mu, sigma, pi)
+    #    pi = maximize_pi(w)
+    #    mu = maximize_mu(points, w, u, mu)
+    #    sigma = maximize_sigma(points, w, u, mu, sigma)
 
 
-    c1 = np.max(w, axis=1)
 
-    plt.scatter(points.T[0], points.T[1], c=c1)
-    plt.scatter(mu.T[0], mu.T[1], color='red')
-    plt.show()
