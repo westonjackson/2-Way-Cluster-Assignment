@@ -120,15 +120,12 @@ def maximize_sigma(points, w, u, mu, sigma):
 
 if __name__ == '__main__':
     num = 100
-    data = pd.read_table("Complete.OTU.by.sample.table.txt", header=0, nrows=100, delimiter="\t")
-    print np.shape(data)
-    print data.columns.values
+    data = pd.read_table("Complete.OTU.by.sample.table.txt", header=0, nrows=num, delimiter="\t")
 
     labels = data["Group"]
-    raw_data = data.drop("Group", axis=1)
-    dimensions = list(raw_data.columns.values)
-    points = raw_data[dimensions][1:num]
-    d = len(dimensions)
+    data.drop(data.columns[[0]], axis=1, inplace=True)
+    points = data.as_matrix()[:,0:2]
+    d = len(points[0])
 
     #initialize variables
     k = 3
@@ -136,17 +133,27 @@ if __name__ == '__main__':
     mu = points[idx,:]
     sigma = np.empty((k,d,d))
     for i in range(len(sigma)):
-        sigma[i] = np.identity(d)
+        sigma[i] = np.identity(d)*10000000
     pi = np.ones((1,k*k))/(k*k)
+    pi = pi.flatten()
     w = np.zeros((len(points),len(pi)))
     u = np.ones((len(points),len(pi)))
 
-    #for i in range(100):
-    #    u = maximize_u(points, u, mu, sigma)
-    #    w = expectation(points, w, u, mu, sigma, pi)
-    #    pi = maximize_pi(w)
-    #    mu = maximize_mu(points, w, u, mu)
-    #    sigma = maximize_sigma(points, w, u, mu, sigma)
+    print "the points"
+    print points
+    print "mu"
+    print mu
+    print "the sigma"
+    print sigma
+    print "pi"
+    print pi
 
-
+    for i in range(100):
+        u = maximize_u(points, u, mu, sigma)
+        w = expectation(points, w, u, mu, sigma, pi)
+        pi = maximize_pi(w)
+        mu = maximize_mu(points, w, u, mu)
+        sigma = maximize_sigma(points, w, u, mu, sigma)
+        print pi
+        print mu
 
