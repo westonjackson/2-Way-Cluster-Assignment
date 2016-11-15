@@ -101,12 +101,12 @@ def get_expectation(point, u_i, mu, sigma, pi):
         probabilities[0][i] = pi[i]*p
 
         if cluster1 != cluster2:
-            p_1 = mahalanobis_distance(point, mu_1, sigma_1)
-            p_2 = mahalanobis_distance(point, mu_2, sigma_2)
+            p_1 = mahalanobis_distance(mean, mu_1, sigma_1)
+            p_2 = mahalanobis_distance(mean, mu_2, sigma_2)
             closest = min(p_1,p_2)
             df = len(point)
 
-            if 1 - stats.chi2.cdf(closest, df) < .05 and u_ijj < 1 and u_ijj > 0:
+            if 1 - stats.chi2.cdf(closest, df) < .05:
                 probabilities[0][i] = pi[i]*p
             else:
                 probabilities[0][i] = 0
@@ -185,7 +185,7 @@ def graph(points, mu, sigma):
     plt.scatter(mu.T[0], mu.T[1], color='red')
     plt.show()
 
-def error_calculations(points, w, u, mu, sigma, pi):
+def error_calculations(points, w, u, mu, sigma, pi, prior_mu, prior_u):
     posterior_mu = np.argmax(w, axis=1)
     correct = 0
     partially_correct = 0
@@ -204,13 +204,14 @@ def error_calculations(points, w, u, mu, sigma, pi):
 
 
     print "cluster error rate"
-    print 1 - correct/float(len(points))
+    cluster_error = 1 - correct/float(len(points))
+    print cluster_error
 
     print "partial cluster error rate"
-    print 1 - partially_correct/float(len(points))
+    partial_error = 1 - partially_correct/float(len(points))
+    print partial_error
 
     new_total = 0
-    old_total = 0
     for i in range(len(u)):
         posterior_u = np.zeros(np.shape(prior_u[i]))
 
@@ -223,30 +224,38 @@ def error_calculations(points, w, u, mu, sigma, pi):
             posterior_u[cluster_2] = u[i][cluster_2*len(mu) + cluster_1]
 
         new_total += np.sum(np.square(prior_u[i] - posterior_u))
-        old_total += np.sum(np.square(prior_u[i] - np.floor(posterior_u + 0.5)))
     print "average squared assignment per point (with u)"
-    print new_total/(len(points))
-    print "average squared assignment per point (no u)"
-    print old_total/(len(points))
+    avg_error = new_total/(len(points))
+    print avg_error
+
+    return (cluster_error, partial_error, avg_error)
+
 
 
 if __name__ == '__main__':
-    mu = [np.array([0,0]), np.array([5,10]),np.array([10,0])]
-    sigma = [np.array([[.1,0],[0,.1]]),np.array([[.2,0],[0,.2]]),np.array([[.1,0],[0,.1]])]
-    pi = [.2,.05,.075,.05,.25,.05,.075,.05,.2]
+    mu_0 = [np.array([0,0]), np.array([5,10]),np.array([10,0])]
+    sigma_0 = [np.array([[.1,0],[0,.1]]),np.array([[.2,0],[0,.2]]),np.array([[.1,0],[0,.1]])]
+    pi_0 = [.2,.05,.075,.05,.25,.05,.075,.05,.2]
 
-    NUM_POINTS = 500
+    NUM_POINTS = 250
+    k = 3
+    d = len(mu_0[0])
+
+    c_error = 0
+    p_error = 0
+    a_error = 0
+    pi_f  = np.zeros((1,k*k))/(k*k)
+    mu_f = np.zeros((k,d))
+    sigma_f  = np.zeros((k,d,d))
     for i in range(10):
-        result = create_points(NUM_POINTS, mu, sigma, pi)
+        result = create_points(NUM_POINTS, mu_0, sigma_0, pi_0)
         points = result[0].T
         prior_u = result[1]
         prior_mu = result[2].T
 
 
-        d = len(points[0])
         num = len(points)
 
-        k = 3
 
         idx = np.random.randint(num, size=k)
         means = kmeans(points, k)[0]
@@ -271,9 +280,30 @@ if __name__ == '__main__':
             print pi
             print mu
             print sigma
-            error_calculations(points, w, u, mu, sigma, pi)
+            error_calculations(points, w, u, mu, sigma, pi, prior_mu, prior_u)
 
-        error_calculations(points, w, u, mu, sigma, pi)
+        error = error_calculations(points, w, u, mu, sigma, pi, prior_mu, prior_u)
         graph(points, mu, sigma)
+        c_error += error[0]
+        p_error += error[1]
+        a_error += error[2]
+        pi_f += pi
+        mu_f += mu
+        sigma_f += sigma
+        print "ERROR"
+        print c_error
+        print p_error
+        print a_error
+        print pi_f
+        print mu_f
+        print sigma_f
+
+    print pi_f/10
+    print mu_f/10
+    print sigma_f/10
+    print c_error/10
+    print p_error/10
+    print a_error/10
+
 
 
