@@ -3,9 +3,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.mlab as mlab
 import math
+import scipy.stats as stats
 from scipy.stats import multivariate_normal
 from matplotlib.patches import Ellipse
-
+from scipy.cluster.vq import vq, kmeans, whiten
+chi2 = stats.chi2
 
 #FOR CREATING DATA POINTS
 def create_points(n, mu, sigma, pi):
@@ -54,13 +56,12 @@ def get_point(mu, sigma, pi):
 def gradient_ascent(muj1, muj2, sigma1, sigma2, x):
     u = .5
     d = 1.0
-    step = .005
-    for i in range(20):
+    eta = .001
+    step = eta
+    for i in range(100):
         d = uniform_gradient(muj1, muj2, sigma1, sigma2, x, u)
         u = u + step*d
-        step = step/np.sqrt(i + 1)
-        if u < 0 or u > 1:
-            break
+        step = eta/np.sqrt(i + 1)
     if u > 1:
         u = 1
     if u < 0:
@@ -80,6 +81,9 @@ def uniform_gradient(muj1, muj2, sigma1, sigma2, x, u):
     t3 = 2*np.dot(np.dot(x_minus_mu,np.linalg.inv(sigma)), deltamu.T)
     return t1 + t2 + t3
 
+def mahalanobis_distance(x, mu, sigma):
+    return np.dot(np.dot((x - mu), np.linalg.inv(sigma)),(x - mu).T)
+
 #Getting expectation w_ijj (need to vectorize)
 def get_expectation(point, u_i, mu, sigma, pi):
     probabilities = np.zeros((1,len(u_i)))
@@ -93,12 +97,19 @@ def get_expectation(point, u_i, mu, sigma, pi):
         u_ijj = u_i[i]
         mean = u_ijj*np.array(mu_1) + (1 - u_ijj)*np.array(mu_2)
         cov = u_ijj*sigma_1 + (1 - u_ijj)*sigma_2
-        p = multivariate_normal.pdf(point, mean=mean, cov=cov, allow_singular=True)
+        p = multivariate_normal.pdf(point, mean=mean, cov=cov)
         probabilities[0][i] = pi[i]*p
-        if u_ijj == 0:
-            probabilities[0][i] = 0
-        if u_ijj == 1 and cluster1 != cluster2:
-            probabilities[0][i] = 0
+
+        if cluster1 != cluster2:
+            p_1 = mahalanobis_distance(point, mu_1, sigma_1)
+            p_2 = mahalanobis_distance(point, mu_2, sigma_2)
+            closest = min(p_1,p_2)
+            df = len(point)
+
+            if 1 - stats.chi2.cdf(closest, df) < .05 and u_ijj < 1 and u_ijj > 0:
+                probabilities[0][i] = pi[i]*p
+            else:
+                probabilities[0][i] = 0
 
     return probabilities
 
@@ -198,10 +209,9 @@ def error_calculations(points, w, u, mu, sigma, pi):
     print "partial cluster error rate"
     print 1 - partially_correct/float(len(points))
 
-    #posterior_u = np.multiply(u,w)
-    total = 0
+    new_total = 0
+    old_total = 0
     for i in range(len(u)):
-
         posterior_u = np.zeros(np.shape(prior_u[i]))
 
         if posterior_mu[i]/len(mu) == posterior_mu[i]%len(mu):
@@ -211,58 +221,59 @@ def error_calculations(points, w, u, mu, sigma, pi):
             cluster_2 = posterior_mu[i]%len(mu)
             posterior_u[cluster_1] = u[i][posterior_mu[i]]
             posterior_u[cluster_2] = u[i][cluster_2*len(mu) + cluster_1]
-        print "current u and prior"
-        print posterior_u
-        print prior_u[i]
 
-        total += np.sum(np.square(prior_u[i] - posterior_u))
-    print "average squared distance per point"
-    print total/(len(points))
+        new_total += np.sum(np.square(prior_u[i] - posterior_u))
+        old_total += np.sum(np.square(prior_u[i] - np.floor(posterior_u + 0.5)))
+    print "average squared assignment per point (with u)"
+    print new_total/(len(points))
+    print "average squared assignment per point (no u)"
+    print old_total/(len(points))
 
 
 if __name__ == '__main__':
-    mu = [np.array([5,0]), np.array([5,5]),np.array([10,5])]
-    sigma = [np.array([[.2,0],[0,.2]]),np.array([[.4,0],[0,.4]]),np.array([[.1,0],[0,.1]])]
-    pi = [.3,.025,.025,.025,.25,.025,.025,.025,.3]
+    mu = [np.array([0,0]), np.array([5,10]),np.array([10,0])]
+    sigma = [np.array([[.1,0],[0,.1]]),np.array([[.2,0],[0,.2]]),np.array([[.1,0],[0,.1]])]
+    pi = [.2,.05,.075,.05,.25,.05,.075,.05,.2]
 
     NUM_POINTS = 500
-    result = create_points(NUM_POINTS, mu, sigma, pi)
-    points = result[0].T
-    prior_u = result[1]
-    prior_mu = result[2].T
+    for i in range(10):
+        result = create_points(NUM_POINTS, mu, sigma, pi)
+        points = result[0].T
+        prior_u = result[1]
+        prior_mu = result[2].T
 
 
-    d = len(points[0])
-    num = len(points)
+        d = len(points[0])
+        num = len(points)
 
-    k = 3
-    idx = np.random.randint(num, size=k)
-    mu = points[idx,:]
-    sigma = np.empty((k,d,d))
-    for i in range(len(sigma)):
-        sigma[i] = np.identity(d)
-    pi = (np.ones((1,k*k))/(k*k))
-    pi = pi.flatten()
-    print mu
-    print sigma
-    print pi
+        k = 3
 
-    w = np.zeros((len(points),len(pi)))
-    u = np.ones((len(points),len(pi)))
-    for i in range(100):
+        idx = np.random.randint(num, size=k)
+        means = kmeans(points, k)[0]
+        mu = means
+        mu = mu[mu[:,0].argsort()] #for error checking
+
+        sigma = np.empty((k,d,d))
+        for i in range(len(sigma)):
+            sigma[i] = np.identity(d)
+        pi = np.ones((1,k*k))/(k*k)
+        pi = pi.flatten()
+        w = np.zeros((len(points),len(pi)))
+        u = np.ones((len(points),len(pi)))
         u = maximize_u(points, u, mu, sigma)
-        w = expectation(points, w, u, mu, sigma, pi)
-        pi = maximize_pi(w)
-        mu = maximize_mu(points, w, u, mu)
-        sigma = maximize_sigma(points, w, u, mu, sigma)
-        print i
-        print pi
-        print mu
-        print sigma
-        graph(points, mu, sigma)
-        error_calculations(points, w, u, mu, sigma, pi)
-    error_calculations(points, w, u, mu, sigma, pi)
-    graph(points, mu, sigma)
 
+        for i in range(10):
+            w = expectation(points, w, u, mu, sigma, pi)
+            pi = maximize_pi(w)
+            u = maximize_u(points, u, mu, sigma)
+            mu = maximize_mu(points, w, u, mu)
+            sigma = maximize_sigma(points, w, u, mu, sigma)
+            print pi
+            print mu
+            print sigma
+            error_calculations(points, w, u, mu, sigma, pi)
+
+        error_calculations(points, w, u, mu, sigma, pi)
+        graph(points, mu, sigma)
 
 

@@ -6,6 +6,7 @@ import math
 from scipy.stats import multivariate_normal
 from matplotlib.patches import Ellipse
 import pandas as pd
+from scipy.cluster.vq import vq, kmeans, whiten
 
 ####################
 #
@@ -67,9 +68,14 @@ def get_expectation(point, u_i, mu, sigma, pi):
 
 #Getting expectation for w_ijj (need to vectorize)
 def expectation(points, w, u, mu, sigma, pi):
+    g = np.zeros((1,len(w[0])))
     for i in range(len(w)):
         probabilities = get_expectation(points[i], u[i], mu, sigma, pi)
         w[i] = probabilities/(np.sum(probabilities))
+        if np.sum(probabilities) == 0:
+            w[i] = np.ones((1,len(w[0])))/len(w[0])
+        g = g + w[i]
+        print g
     return w
 
 #maximize pi
@@ -119,34 +125,28 @@ def maximize_sigma(points, w, u, mu, sigma):
 
 
 if __name__ == '__main__':
-    num = 100
+    num = 1000
     data = pd.read_table("Complete.OTU.by.sample.table.txt", header=0, nrows=num, delimiter="\t")
 
     labels = data["Group"]
     data.drop(data.columns[[0]], axis=1, inplace=True)
-    points = data.as_matrix()[:,0:2]
+    points = data.as_matrix()[:,0:10].astype(float)
     d = len(points[0])
 
     #initialize variables
-    k = 3
-    idx = np.random.randint(num, size=k)
-    mu = points[idx,:]
+    k = 5
+
+    mu = kmeans(points, k)[0]
     sigma = np.empty((k,d,d))
     for i in range(len(sigma)):
-        sigma[i] = np.identity(d)*10000000
+        sigma[i] = np.identity(d)*100000000
     pi = np.ones((1,k*k))/(k*k)
     pi = pi.flatten()
     w = np.zeros((len(points),len(pi)))
     u = np.ones((len(points),len(pi)))
 
-    print "the points"
-    print points
     print "mu"
     print mu
-    print "the sigma"
-    print sigma
-    print "pi"
-    print pi
 
     for i in range(100):
         u = maximize_u(points, u, mu, sigma)
@@ -154,6 +154,8 @@ if __name__ == '__main__':
         pi = maximize_pi(w)
         mu = maximize_mu(points, w, u, mu)
         sigma = maximize_sigma(points, w, u, mu, sigma)
+        print "pi"
         print pi
+        print "mu"
         print mu
 
