@@ -7,6 +7,8 @@ import scipy.stats as stats
 from scipy.stats import multivariate_normal
 from matplotlib.patches import Ellipse
 from scipy.cluster.vq import vq, kmeans, whiten
+from scipy.optimize import minimize
+
 chi2 = stats.chi2
 
 #FOR CREATING DATA POINTS
@@ -56,17 +58,29 @@ def get_point(mu, sigma, pi):
 def gradient_ascent(muj1, muj2, sigma1, sigma2, x):
     u = .5
     d = 1.0
-    eta = .001
-    step = eta
+    eta = 1
+    step = eta/4.0
+
     for i in range(100):
         d = uniform_gradient(muj1, muj2, sigma1, sigma2, x, u)
-        u = u + step*d
-        step = eta/np.sqrt(i + 1)
+        if d > 0:
+            u = u + eta*step
+            step = step/2
+        if d < 0:
+            u = u - eta*step
+            step = step/2
+        if d < 0.0000001 and d > -1*0.0000001:
+            break
     if u > 1:
         u = 1
     if u < 0:
         u = 0
     return u
+
+def objective_value(muj1, muj2, sigma1, sigma2, x, u):
+    mean = u*muj1 + (1 - u)*muj2
+    sigma = u*sigma1 + (1 - u)*sigma2
+    return multivariate_normal.logpdf(x,mean,sigma)
 
 #get gradient for u
 def uniform_gradient(muj1, muj2, sigma1, sigma2, x, u):
@@ -104,9 +118,9 @@ def get_expectation(point, u_i, mu, sigma, pi):
             p_1 = mahalanobis_distance(mean, mu_1, sigma_1)
             p_2 = mahalanobis_distance(mean, mu_2, sigma_2)
             closest = min(p_1,p_2)
-            df = len(point)
+            df = len(point) - 1
 
-            if 1 - stats.chi2.cdf(closest, df) < .05:
+            if  stats.chi2.cdf(closest, df) > .99:
                 probabilities[0][i] = pi[i]*p
             else:
                 probabilities[0][i] = 0
@@ -116,8 +130,13 @@ def get_expectation(point, u_i, mu, sigma, pi):
 #Getting expectation for w_ijj (need to vectorize)
 def expectation(points, w, u, mu, sigma, pi):
     for i in range(len(w)):
+        #print points[i]
+        #print w[i]
         probabilities = get_expectation(points[i], u[i], mu, sigma, pi)
         w[i] = probabilities/(np.sum(probabilities))
+        if np.sum(probabilities) == 0:
+            w[i] = np.ones((1,len(w[0])))/len(w[0])
+        #print w[i]
     return w
 
 #maximize pi
@@ -128,6 +147,8 @@ def maximize_pi(w):
 #maximize u (need to vectorize)
 def maximize_u(points, u, mu, sigma):
     for i in range(len(u)):
+        #print points[i]
+        #print u[i]
         for j in range(len(u[0])):
             cluster_1 = j/len(mu)
             cluster_2 = j%len(mu)
@@ -138,6 +159,7 @@ def maximize_u(points, u, mu, sigma):
             sigmaj2 = sigma[cluster_2]
             if cluster_1 != cluster_2:
                 u[i][j] = gradient_ascent(muj1, muj2, sigmaj1, sigmaj2, x)
+        #print u[i]
     return u
 
 #maximize mu
@@ -175,8 +197,8 @@ def graph(points, mu, sigma):
         ell = Ellipse(xy=(mean[0],mean[1]),width=np.sqrt(lambda_[0]), height=np.sqrt(lambda_[1]), angle=np.rad2deg(np.arccos(v[0,0])))
         ell.set_facecolor('none')
         ax.add_artist(ell)
-    ax.set_xlim(-1, 11)
-    ax.set_ylim(-1, 11)
+    ax.set_xlim(-1, 41)
+    ax.set_ylim(-1, 41)
 
 
     c1 = np.max(w, axis=1)
@@ -185,31 +207,31 @@ def graph(points, mu, sigma):
     plt.scatter(mu.T[0], mu.T[1], color='red')
     plt.show()
 
-def error_calculations(points, w, u, mu, sigma, pi, prior_mu, prior_u):
+def error_calculations(points, w, u, mu, sigma, pi, prior_mu, prior_u, mu_0, sigma_0, pi_0):
     posterior_mu = np.argmax(w, axis=1)
     correct = 0
-    partially_correct = 0
     for i in range(len(points)):
         if prior_mu[i][0] == posterior_mu[i] / len(mu) and prior_mu[i][1] == posterior_mu[i] % len(mu):
             correct = correct + 1
-            partially_correct = partially_correct + 1
         elif prior_mu[i][0] == posterior_mu[i] % len(mu) and prior_mu[i][1] == posterior_mu[i] / len(mu):
             correct = correct + 1
-            partially_correct = partially_correct + 1
-        else:
-            if prior_mu[i][0] == posterior_mu[i] / len(mu) or prior_mu[i][1] == posterior_mu[i] % len(mu):
-                partially_correct = partially_correct + 1
-            elif prior_mu[i][0] == posterior_mu[i] % len(mu) or prior_mu[i][1] == posterior_mu[i] / len(mu):
-                partially_correct = partially_correct + 1
 
 
     print "cluster error rate"
     cluster_error = 1 - correct/float(len(points))
     print cluster_error
 
-    print "partial cluster error rate"
-    partial_error = 1 - partially_correct/float(len(points))
-    print partial_error
+    print "squared difference from pi"
+    pi_diff = np.sum(np.square(pi - pi_0))
+    print pi_diff
+
+    print "squared difference from mu"
+    mu_diff = np.sum(np.square(mu - mu_0))
+    print mu_diff
+
+    print "squared difference from sigma"
+    sigma_diff = np.sum(np.square(sigma - sigma_0))
+    print sigma_diff
 
     new_total = 0
     for i in range(len(u)):
@@ -222,13 +244,12 @@ def error_calculations(points, w, u, mu, sigma, pi, prior_mu, prior_u):
             cluster_2 = posterior_mu[i]%len(mu)
             posterior_u[cluster_1] = u[i][posterior_mu[i]]
             posterior_u[cluster_2] = u[i][cluster_2*len(mu) + cluster_1]
-
         new_total += np.sum(np.square(prior_u[i] - posterior_u))
     print "average squared assignment per point (with u)"
     avg_error = new_total/(len(points))
     print avg_error
 
-    return (cluster_error, partial_error, avg_error)
+    return (cluster_error, pi_diff, mu_diff, sigma_diff, avg_error)
 
 
 
@@ -237,12 +258,14 @@ if __name__ == '__main__':
     sigma_0 = [np.array([[.1,0],[0,.1]]),np.array([[.2,0],[0,.2]]),np.array([[.1,0],[0,.1]])]
     pi_0 = [.2,.05,.075,.05,.25,.05,.075,.05,.2]
 
-    NUM_POINTS = 250
     k = 3
     d = len(mu_0[0])
 
+    NUM_POINTS = 250
     c_error = 0
     p_error = 0
+    m_error = 0
+    s_error = 0
     a_error = 0
     pi_f  = np.zeros((1,k*k))/(k*k)
     mu_f = np.zeros((k,d))
@@ -263,15 +286,15 @@ if __name__ == '__main__':
         mu = mu[mu[:,0].argsort()] #for error checking
 
         sigma = np.empty((k,d,d))
-        for i in range(len(sigma)):
-            sigma[i] = np.identity(d)
+        for j in range(len(sigma)):
+            sigma[j] = np.identity(d)
         pi = np.ones((1,k*k))/(k*k)
         pi = pi.flatten()
         w = np.zeros((len(points),len(pi)))
         u = np.ones((len(points),len(pi)))
         u = maximize_u(points, u, mu, sigma)
 
-        for i in range(10):
+        for j in range(10):
             w = expectation(points, w, u, mu, sigma, pi)
             pi = maximize_pi(w)
             u = maximize_u(points, u, mu, sigma)
@@ -280,19 +303,22 @@ if __name__ == '__main__':
             print pi
             print mu
             print sigma
-            error_calculations(points, w, u, mu, sigma, pi, prior_mu, prior_u)
-
-        error = error_calculations(points, w, u, mu, sigma, pi, prior_mu, prior_u)
-        graph(points, mu, sigma)
+            error_calculations(points, w, u, mu, sigma, pi, prior_mu, prior_u, mu_0, sigma_0, pi_0)
+            graph(points, mu, sigma)
+        error = error_calculations(points, w, u, mu, sigma, pi, prior_mu, prior_u, mu_0, sigma_0, pi_0)
         c_error += error[0]
         p_error += error[1]
-        a_error += error[2]
+        m_error += error[2]
+        s_error += error[3]
+        a_error += error[4]
         pi_f += pi
         mu_f += mu
         sigma_f += sigma
         print "ERROR"
         print c_error
         print p_error
+        print m_error
+        print s_error
         print a_error
         print pi_f
         print mu_f
@@ -303,6 +329,8 @@ if __name__ == '__main__':
     print sigma_f/10
     print c_error/10
     print p_error/10
+    print m_error/10
+    print s_error/10
     print a_error/10
 
 
