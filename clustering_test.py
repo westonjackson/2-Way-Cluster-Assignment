@@ -1,4 +1,3 @@
-import sqlite3
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.mlab as mlab
@@ -6,9 +5,8 @@ import math
 import scipy.stats as stats
 from scipy.stats import multivariate_normal
 from matplotlib.patches import Ellipse
-from scipy.cluster.vq import vq, kmeans, whiten
-from scipy.optimize import minimize
-
+from scipy.cluster.vq import kmeans
+from scipy.misc import logsumexp
 chi2 = stats.chi2
 
 #FOR CREATING DATA POINTS
@@ -61,7 +59,7 @@ def gradient_ascent(muj1, muj2, sigma1, sigma2, x):
     eta = 1
     step = eta/4.0
 
-    for i in range(100):
+    for i in range(20):
         d = uniform_gradient(muj1, muj2, sigma1, sigma2, x, u)
         if d > 0:
             u = u + eta*step
@@ -69,8 +67,6 @@ def gradient_ascent(muj1, muj2, sigma1, sigma2, x):
         if d < 0:
             u = u - eta*step
             step = step/2
-        if d < 0.0000001 and d > -1*0.0000001:
-            break
     if u > 1:
         u = 1
     if u < 0:
@@ -101,7 +97,7 @@ def mahalanobis_distance(x, mu, sigma):
 #Getting expectation w_ijj (need to vectorize)
 def get_expectation(point, u_i, mu, sigma, pi):
     probabilities = np.zeros((1,len(u_i)))
-    for i in range(len(u_i)):
+    for i in range(len(probabilities[0])):
         cluster1 = i/len(mu)
         cluster2 = i%len(mu)
         mu_1 = mu[cluster1]
@@ -111,32 +107,34 @@ def get_expectation(point, u_i, mu, sigma, pi):
         u_ijj = u_i[i]
         mean = u_ijj*np.array(mu_1) + (1 - u_ijj)*np.array(mu_2)
         cov = u_ijj*sigma_1 + (1 - u_ijj)*sigma_2
-        p = multivariate_normal.pdf(point, mean=mean, cov=cov)
-        probabilities[0][i] = pi[i]*p
+        p = multivariate_normal.logpdf(point, mean=mean, cov=cov)
+        probabilities[0][i] = p
 
         if cluster1 != cluster2:
             p_1 = mahalanobis_distance(mean, mu_1, sigma_1)
             p_2 = mahalanobis_distance(mean, mu_2, sigma_2)
             closest = min(p_1,p_2)
-            df = len(point) - 1
-
-            if  stats.chi2.cdf(closest, df) > .99:
-                probabilities[0][i] = pi[i]*p
+            for j in range(len(mu)):
+                d = mahalanobis_distance(point, mu[j], sigma[j])
+                closest = min(d, closest)
+            df = len(point) - 1    
+            
+            if  stats.chi2.cdf(closest, df) < .99:
+                probabilities[0][i] = np.NINF
             else:
-                probabilities[0][i] = 0
+                probabilities[0][i] = p
 
     return probabilities
 
+
 #Getting expectation for w_ijj (need to vectorize)
 def expectation(points, w, u, mu, sigma, pi):
-    for i in range(len(w)):
-        #print points[i]
-        #print w[i]
+    for i in range(len(points)):
         probabilities = get_expectation(points[i], u[i], mu, sigma, pi)
-        w[i] = probabilities/(np.sum(probabilities))
-        if np.sum(probabilities) == 0:
-            w[i] = np.ones((1,len(w[0])))/len(w[0])
-        #print w[i]
+        total = logsumexp(probabilities, b = pi)
+        w[i] = np.exp(np.log(pi) + probabilities - total)
+        if np.sum(np.exp(probabilities)) == 0:
+            w[i] = np.zeros((1,len(w[0])))
     return w
 
 #maximize pi
@@ -147,8 +145,6 @@ def maximize_pi(w):
 #maximize u (need to vectorize)
 def maximize_u(points, u, mu, sigma):
     for i in range(len(u)):
-        #print points[i]
-        #print u[i]
         for j in range(len(u[0])):
             cluster_1 = j/len(mu)
             cluster_2 = j%len(mu)
@@ -159,7 +155,6 @@ def maximize_u(points, u, mu, sigma):
             sigmaj2 = sigma[cluster_2]
             if cluster_1 != cluster_2:
                 u[i][j] = gradient_ascent(muj1, muj2, sigmaj1, sigmaj2, x)
-        #print u[i]
     return u
 
 #maximize mu
@@ -197,15 +192,28 @@ def graph(points, mu, sigma):
         ell = Ellipse(xy=(mean[0],mean[1]),width=np.sqrt(lambda_[0]), height=np.sqrt(lambda_[1]), angle=np.rad2deg(np.arccos(v[0,0])))
         ell.set_facecolor('none')
         ax.add_artist(ell)
-    ax.set_xlim(-1, 41)
-    ax.set_ylim(-1, 41)
-
-
+    ax.set_xlim(-1, 11)
+    ax.set_ylim(-1, 11)
     c1 = np.max(w, axis=1)
 
     plt.scatter(points.T[0], points.T[1], c=c1)
     plt.scatter(mu.T[0], mu.T[1], color='red')
     plt.show()
+
+def get_log_likelihood(points, w, u, mu, sigma, pi):
+    log_likelihood_sum = 0
+    for i in range(len(points)):
+        for j in range(len(pi)):
+            cluster_1 = j/len(mu)
+            cluster_2 = j%len(mu)
+            mean = u[i][j]*mu[cluster_1] + (1 - u[i][j])*mu[cluster_2]
+            cov = u[i][j]*sigma[cluster_1] + (1 - u[i][j])*sigma[cluster_2]
+            term_1 = np.log(pi[j])
+            term_2 = 0.5*np.log(np.linalg.det(np.linalg.inv(cov)))
+            term_3 = -0.5*np.dot(np.dot(mean - points[i],cov),(mean - points[i]).T)
+            log_likelihood_sum += w[i][j]*(term_1 + term_2 + term_3)
+    print log_likelihood_sum
+            
 
 def error_calculations(points, w, u, mu, sigma, pi, prior_mu, prior_u, mu_0, sigma_0, pi_0):
     posterior_mu = np.argmax(w, axis=1)
@@ -254,9 +262,9 @@ def error_calculations(points, w, u, mu, sigma, pi, prior_mu, prior_u, mu_0, sig
 
 
 if __name__ == '__main__':
-    mu_0 = [np.array([0,0]), np.array([5,10]),np.array([10,0])]
+    mu_0 = [np.array([0,0]), np.array([5,5]),np.array([10,0])]
     sigma_0 = [np.array([[.1,0],[0,.1]]),np.array([[.2,0],[0,.2]]),np.array([[.1,0],[0,.1]])]
-    pi_0 = [.2,.05,.075,.05,.25,.05,.075,.05,.2]
+    pi_0 = [.25,.05,.025,.05,.25,.05,.025,.05,.25]
 
     k = 3
     d = len(mu_0[0])
@@ -275,16 +283,13 @@ if __name__ == '__main__':
         points = result[0].T
         prior_u = result[1]
         prior_mu = result[2].T
-
-
+        
         num = len(points)
-
 
         idx = np.random.randint(num, size=k)
         means = kmeans(points, k)[0]
         mu = means
         mu = mu[mu[:,0].argsort()] #for error checking
-
         sigma = np.empty((k,d,d))
         for j in range(len(sigma)):
             sigma[j] = np.identity(d)
@@ -294,8 +299,10 @@ if __name__ == '__main__':
         u = np.ones((len(points),len(pi)))
         u = maximize_u(points, u, mu, sigma)
 
+        
         for j in range(10):
             w = expectation(points, w, u, mu, sigma, pi)
+            print get_log_likelihood(points, w, u, mu, sigma, pi)
             pi = maximize_pi(w)
             u = maximize_u(points, u, mu, sigma)
             mu = maximize_mu(points, w, u, mu)
@@ -303,8 +310,9 @@ if __name__ == '__main__':
             print pi
             print mu
             print sigma
-            error_calculations(points, w, u, mu, sigma, pi, prior_mu, prior_u, mu_0, sigma_0, pi_0)
+            error = error_calculations(points, w, u, mu, sigma, pi, prior_mu, prior_u, mu_0, sigma_0, pi_0)
             graph(points, mu, sigma)
+            
         error = error_calculations(points, w, u, mu, sigma, pi, prior_mu, prior_u, mu_0, sigma_0, pi_0)
         c_error += error[0]
         p_error += error[1]
