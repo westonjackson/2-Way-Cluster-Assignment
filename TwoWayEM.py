@@ -1,17 +1,9 @@
-import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
-import matplotlib.mlab as mlab
 import math
 import scipy.stats as stats
 from scipy.stats import multivariate_normal
 from scipy.cluster.vq import kmeans
 from scipy.misc import logsumexp
-from sklearn.metrics.pairwise import euclidean_distances
-from sklearn.manifold import MDS
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import scale
-from mpl_toolkits.mplot3d import Axes3D
 
 chi2 = stats.chi2
 TWO_WAY_SIGNFICANCE_LEVEL = .99
@@ -147,116 +139,28 @@ def maximize_sigma(points, w, u, mu, sigma):
         sigma[i] = result * np.reciprocal(sum_w_j[i])
     return sigma
 
-def get_log_likelihood(points, w, u, mu, sigma, pi):
-    log_likelihood_sum = 0
-    for i in range(len(points)):
-        for j in range(len(pi)):
-            cluster_1 = j/len(mu)
-            cluster_2 = j%len(mu)
-            mean = u[i][j]*mu[cluster_1] + (1 - u[i][j])*mu[cluster_2]
-            cov = u[i][j]*sigma[cluster_1] + (1 - u[i][j])*sigma[cluster_2]
-            term_1 = np.log(pi[j])
-            term_2 = 0.5*np.log(np.linalg.det(np.linalg.inv(cov)))
-            term_3 = -0.5*np.dot(np.dot(mean - points[i],cov),(mean - points[i]).T)
-            log_likelihood_sum += w[i][j]*(term_1 + term_2 + term_3)
-    print log_likelihood_sum
-
-if __name__ == '__main__':
-    sample_names = pd.read_table("combined.clean.an.0.03.subsample.shared", header=0, delimiter="\t")
-    sample_names.drop(sample_names.columns[[0,1,2]], axis=1, inplace=True)
-    sample_names = sample_names.as_matrix().astype(float)[:,0:20]
-
-
-    data = pd.read_table("combined.clean.an.thetayc.0.03.lt.ave.pcoa.axes", header=0, delimiter="\t")
-    labels = data["group"]
-    data.drop(data.columns[[0]], axis=1, inplace=True)
-    points = data.as_matrix().astype(float)
-    points = points[:,0:3]
-
-    n = len(points)
-    d = len(points[0])
-    k = 5
-
-    mu = kmeans(points, k)[0]
+def classify(X, k, cov_init_magnitude=1, num_rounds=5, two_way_significance_level = .99):
+    
+    n = len(X)
+    d = len(X[0])
+    TWO_WAY_SIGNFICANCE_LEVEL = two_way_significance_level
+    
+    mu = kmeans(X, k)[0]
     sigma = np.empty((k,d,d))
     for i in range(len(sigma)):
-        sigma[i] = np.identity(d)*.001
+        sigma[i] = np.identity(d)*cov_init_magnitude
     pi = np.ones((1,k*k))/(k*k)
     pi = pi.flatten()
     w = np.zeros((n,k*k))
     u = np.ones((n,k*k))
-    u = maximize_u(points, u, mu, sigma)
+    
+    u = maximize_u(X, u, mu, sigma)
 
-    print "mu"
-    print mu
-
-    for i in range(1):
-        c1 = np.max(w, axis=1)
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        ax.scatter(points.T[0], points.T[1], points.T[2], c=c1)
-        ax.scatter(mu.T[0], mu.T[1], mu.T[2], c='r')
-        plt.show()
-
-        w = expectation(points, w, u, mu, sigma, pi)
+    for i in range(num_rounds):
+        w = expectation(X, w, u, mu, sigma, pi)
         pi = maximize_pi(w)
-        u = maximize_u(points, u, mu, sigma)
-        mu = maximize_mu(points, w, u, mu)
-        sigma = maximize_sigma(points, w, u, mu, sigma)
-        print "pi"
-        print pi
-        print "mu"
-        print mu
-        print "sigma"
-        print sigma
-
-    c1 = np.max(w, axis=1)
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    ax.scatter(points.T[0], points.T[1], points.T[2], c=c1)
-    ax.scatter(mu.T[0], mu.T[1], mu.T[2], c='r')
-    plt.show()
-
-    c2 = np.argmax(w, axis=1)
-    count = np.zeros(((int(k*k)),20))
-    for i in range(int(k*k)):
-        for j in range(len(points)):
-            otus = np.argsort(sample_names[j])[-2:][::-1]
-            assignment = c2[j]
-            cluster_1 = assignment/len(mu)
-            cluster_2 = assignment%len(mu)
-            if cluster_1*len(mu) + cluster_2 == i or cluster_2*len(mu) + cluster_1 == i:
-                count[i][otus[0]] = count[i][otus[0]] + 1
-                count[i][otus[1]] = count[i][otus[1]] + 1
-
-    count = count.T
-    for i in range(len(count)):
-        for j in range(len(count[0]) - 1):
-            cluster_1 = j/len(mu)
-            cluster_2 = j%len(mu)
-            if cluster_1 <= cluster_2:
-                print '{} & '.format(int(count[i][j])),
-        print '{} \\\\ \hline '.format(int(count[i][len(count[0]) - 1]))
-
-
-    count = np.zeros((int(k*k),20))
-    for i in range(int(k*k)):
-        for j in range(len(points)):
-            otus = np.argmax(sample_names[j])
-            assignment = c2[j]
-            cluster_1 = assignment/len(mu)
-            cluster_2 = assignment%len(mu)
-            if cluster_1*len(mu) + cluster_2 == i or cluster_2*len(mu) + cluster_1 == i:
-                count[i][otus] = count[i][otus] + 1
-
-    count = count.T
-    for i in range(len(count)):
-        for j in range(len(count[0]) - 1):
-            cluster_1 = j/len(mu)
-            cluster_2 = j%len(mu)
-            if cluster_1 <= cluster_2:
-                print '{} & '.format(int(count[i][j])),
-        print '{} \\\\ \hline '.format(int(count[i][len(count[0]) - 1]))
-
-
-
+        u = maximize_u(X, u, mu, sigma)
+        mu = maximize_mu(X, w, u, mu)
+        sigma = maximize_sigma(X, w, u, mu, sigma)
+        
+    return (w,u,pi,mu,sigma)
