@@ -1,29 +1,17 @@
-#2-Way Clustering Assignment Simulator
+#2-Way Clustering Assignment
 
-####This code randomly simulates a 2D data set with 2-Way Cluster Assignment.
+TwoWaykmeans.py
+- TwoWayCluster(X, k, num_rounds)
+- X: numpy data matrix
+- k: number of clusters
+- num_rounds: number of rounds
 
-Data points: xi...xn
+- Attributes (C,phi)
+- C: k cluster centers as columns
+- phi: 2-sparse vector cluster assignments (u, 1 - u) for each x_i
 
-Clusters: yj...yn
+TwoWayEM.py (unfinished)
+- test file for TwoWayEM.py
 
-
-####Cluster Parameters:
-
-2-Way Assignment Probability: (j < j') -> (pi)jj'
-
-Cluster Mean: (mu)jj'
-
-Cluster Covariance: (Sigma)jj'
-
-
-####Algorithm
-
-Given parameters mu(1...k), Sigma(1...k), pi(1,1..k,k). All clusters will have centers at mu(1...k) with standard deviations Sigma(1...k).
-
-For a given point xi:
-
-1. Assign xi to 2-Way cluster jj' with probability pi(jj').
-
-2. Assign probability ui = Uniform(0,1) to xi, which creates the following normal distribution for xi:
-
-N(xi; ui muj + (1 - ui)muj', ui Sigmaj + (1 - ui)Sigmaj')
+RealData.py
+- test file for TwoWayEM.py
