@@ -16,14 +16,14 @@ if __name__ == '__main__':
     data.drop(data.columns[[0]], axis=1, inplace=True)
     X = data.as_matrix().astype(float)
     X = X[:,0:3]
-    
+
     print len(X)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.scatter(X.T[0], X.T[1], X.T[2])
     plt.show()
-    
-    
+
+
     nbrs = NearestNeighbors(n_neighbors=2, algorithm='ball_tree').fit(X)
     distances, indices = nbrs.kneighbors(X)
     distances = distances[:,1]
@@ -36,31 +36,31 @@ if __name__ == '__main__':
     ax = fig.add_subplot(111, projection='3d')
     ax.scatter(X.T[0], X.T[1], X.T[2])
     plt.show()
-    
+
     k = 5
     results = TwoWayEM.classify(X, k, cov_init_magnitude=.001, num_rounds=1, two_way_significance_level = .99)
-    
+
     w = results[0]
     u = results[1]
     pi = results[2]
     mu = results[3]
     sigma = results[4]
-    
+
     c1 = np.max(w, axis=1)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.scatter(X.T[0], X.T[1], X.T[2], c=c1)
     ax.scatter(mu.T[0], mu.T[1], mu.T[2], c='r')
     plt.show()
-    
+
     results = TwoWayEM.classify(X, k, cov_init_magnitude=.001, num_rounds=5, two_way_significance_level = .99)
-    
+
     w = results[0]
     u = results[1]
     pi = results[2]
     mu = results[3]
     sigma = results[4]
-    
+
     c1 = np.max(w, axis=1)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')

@@ -140,11 +140,11 @@ def maximize_sigma(points, w, u, mu, sigma):
     return sigma
 
 def classify(X, k, cov_init_magnitude=1, num_rounds=5, two_way_significance_level = .99):
-    
+
     n = len(X)
     d = len(X[0])
     TWO_WAY_SIGNFICANCE_LEVEL = two_way_significance_level
-    
+
     mu = kmeans(X, k)[0]
     sigma = np.empty((k,d,d))
     for i in range(len(sigma)):
@@ -153,7 +153,7 @@ def classify(X, k, cov_init_magnitude=1, num_rounds=5, two_way_significance_leve
     pi = pi.flatten()
     w = np.zeros((n,k*k))
     u = np.ones((n,k*k))
-    
+
     u = maximize_u(X, u, mu, sigma)
 
     for i in range(num_rounds):
@@ -162,5 +162,5 @@ def classify(X, k, cov_init_magnitude=1, num_rounds=5, two_way_significance_leve
         u = maximize_u(X, u, mu, sigma)
         mu = maximize_mu(X, w, u, mu)
         sigma = maximize_sigma(X, w, u, mu, sigma)
-        
+
     return (w,u,pi,mu,sigma)
