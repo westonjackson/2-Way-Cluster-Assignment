@@ -6,31 +6,28 @@ import math
 from scipy.cluster.vq import kmeans
 from sklearn.preprocessing import scale
 from mpl_toolkits.mplot3d import Axes3D
-from sklearn import linear_model
-from sklearn.linear_model import LassoLars
-from sklearn.linear_model import LinearRegression
+#from sklearn import linear_model
+#from sklearn.linear_model import LassoLars
+#from sklearn.linear_model import LinearRegression
 
 def minimum(p, mu_1, mu_2):
     return np.dot((mu_2 - mu_1).T,(mu_2 - p))*(1/(float(np.linalg.norm(mu_2 - mu_1)**2)))
 
-
-def get_lasso(p,C):
-    lasso = linear_model.Lars(n_nonzero_coefs = 2, positive = True)
-    least_squares = lasso.fit(C,p).coef_
-    indices = least_squares.argsort()[-2:][::-1]
-    print indices
-    uijj = minimum(p, C.T[indices[0]],C.T[indices[1]])
-    if uijj > 1:
-        uijj = 1
-    if uijj < 0:
-        uijj = 0
-
-    phi = np.zeros((1,5))
-    phi[0,indices[0]] = uijj
-    phi[0,indices[1]] = 1 - uijj
-
-    print "result: ", phi
-    return lasso.fit(C,p)
+#def get_lasso(p,C):
+#    lasso = linear_model.Lars(n_nonzero_coefs = 2, positive = True)
+#    least_squares = lasso.fit(C,p).coef_
+#    indices = least_squares.argsort()[-2:][::-1]
+#    print indices
+#    uijj = minimum(p, C.T[indices[0]],C.T[indices[1]])
+#    if uijj > 1:
+#        uijj = 1
+#    if uijj < 0:
+#        uijj = 0
+#    phi = np.zeros((1,5))
+#    phi[0,indices[0]] = uijj
+#    phi[0,indices[1]] = 1 - uijj
+#    print "result: ", phi
+#    return lasso.fit(C,p)
 
 
 def zero_one_lasso(X, C):
@@ -59,7 +56,7 @@ def zero_one_lasso(X, C):
         phi[index_1][i] = u
         phi[index_2][i] = 1 - u
         error = error + mindistance
-    print error
+    print "Objective: ", error
     return phi
 
 def TwoWayCluster(X, k, num_rounds):
@@ -79,11 +76,11 @@ def TwoWayCluster(X, k, num_rounds):
     return C,phi
 
 if __name__ == '__main__':
-    sample_names = pd.read_table("combined.clean.an.0.03.subsample.shared", header=0, delimiter="\t")
+    sample_names = pd.read_table("otudata/combined.clean.an.0.03.subsample.shared", header=0, delimiter="\t")
     sample_names.drop(sample_names.columns[[0,1,2]], axis=1, inplace=True)
     sample_names = sample_names.as_matrix().astype(float)[:,0:20]
 
-    data = pd.read_table("combined.clean.an.thetayc.0.03.lt.ave.pcoa.axes", header=0, delimiter="\t")
+    data = pd.read_table("otudata/combined.clean.an.thetayc.0.03.lt.ave.pcoa.axes", header=0, delimiter="\t")
     labels = data["group"]
     data.drop(data.columns[[0]], axis=1, inplace=True)
     points = data.as_matrix().astype(float)
@@ -107,10 +104,6 @@ if __name__ == '__main__':
     plt.show()
 
 
-    print C
-    print phi
-
-
     for i in range(5):
         phi = zero_one_lasso(points, C)
         C = np.dot(np.dot(np.linalg.inv(np.dot(phi,phi.T)),phi),points).T
@@ -127,7 +120,6 @@ if __name__ == '__main__':
     for i in range(len(points)):
         indices = np.nonzero(phi.T[i])
         y[i] = indices[0]
-        print y[i]
 
     count = np.zeros((k,20))
     for i in range(len(points)):
