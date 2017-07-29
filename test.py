@@ -54,7 +54,6 @@ if __name__ == '__main__':
     plt.scatter(mu.T[0], mu.T[1], c='w', marker='*', s=200)
     plt.show()
 
-
     C, phi = TwoWaykmeans.TwoWayCluster(X,k,NUM_ROUNDS)
     c1 = []
     for i in range(len(phi.T)):
@@ -64,24 +63,8 @@ if __name__ == '__main__':
     plt.scatter(C[0], C[1], c='w', marker='^', s=100)
     plt.show()
 
-    #err1_tot = 0
-    #err2_tot = 0
-    #err3_tot = 0
-    #for i in range(10):
-
     NUM_ROUNDS = 10
     C,phi = TwoWaykmeans.TwoWayCluster(X,k,NUM_ROUNDS)
-    #err1, err2, err3 = error_rates(mu_star, u_star, fx_star, C, phi)
-    #err1_tot = err1_tot + err1
-    #err2_tot = err2_tot + err2
-    #err3_tot = err3_tot + err3
-
-    #print err1_tot/float(10)
-    #print err2_tot/float(10)
-    #print err3_tot/float(10)
-
-    #TwoWayEM2.classify(X,3,cov_init_magnitude=.001)
-    #C, phi = TwoWayClustering.TwoWayCluster(X,3,10)
 
     c1 = []
     for i in range(len(phi.T)):

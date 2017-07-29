@@ -6,31 +6,11 @@ import math
 from scipy.cluster.vq import kmeans
 from sklearn.preprocessing import scale
 from mpl_toolkits.mplot3d import Axes3D
-#from sklearn import linear_model
-#from sklearn.linear_model import LassoLars
-#from sklearn.linear_model import LinearRegression
 
 def minimum(p, mu_1, mu_2):
     return np.dot((mu_2 - mu_1).T,(mu_2 - p))*(1/(float(np.linalg.norm(mu_2 - mu_1)**2)))
 
-#def get_lasso(p,C):
-#    lasso = linear_model.Lars(n_nonzero_coefs = 2, positive = True)
-#    least_squares = lasso.fit(C,p).coef_
-#    indices = least_squares.argsort()[-2:][::-1]
-#    print indices
-#    uijj = minimum(p, C.T[indices[0]],C.T[indices[1]])
-#    if uijj > 1:
-#        uijj = 1
-#    if uijj < 0:
-#        uijj = 0
-#    phi = np.zeros((1,5))
-#    phi[0,indices[0]] = uijj
-#    phi[0,indices[1]] = 1 - uijj
-#    print "result: ", phi
-#    return lasso.fit(C,p)
-
-
-def zero_one_lasso(X, C):
+def minimize_phi(X, C):
     error = 0
     summation = 0
     phi = np.zeros((len(C[0]), len(X)))
@@ -70,7 +50,7 @@ def TwoWayCluster(X, k, num_rounds):
     C = mu.T
 
     for i in range(num_rounds):
-        phi = zero_one_lasso(X, C)
+        phi = minimize_phi(X, C)
         C = np.dot(np.dot(np.linalg.inv(np.dot(phi,phi.T)),phi), X).T
 
     return C,phi
@@ -89,7 +69,6 @@ if __name__ == '__main__':
 
     n = len(points)
     d = len(points[0])
-
     k = 5
     mu = kmeans(points, k)[0]
 
@@ -105,7 +84,7 @@ if __name__ == '__main__':
 
 
     for i in range(5):
-        phi = zero_one_lasso(points, C)
+        phi = minimize_phi(points, C)
         C = np.dot(np.dot(np.linalg.inv(np.dot(phi,phi.T)),phi),points).T
     c1 = np.max(phi.T, axis=1)
     fig = plt.figure()
